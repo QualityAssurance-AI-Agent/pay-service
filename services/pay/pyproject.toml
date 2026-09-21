@@ -1,0 +1,18 @@
+[project]
+name = "pay-api"
+version = "1.0.0"
+description = "Read API over payments: search, fetch one, fees and receipts."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+# Fail on warnings: a DeprecationWarning in a money path is a bug report, and one
+# that only shows up in a log nobody reads is a bug report nobody reads.
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

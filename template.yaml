@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  The payments read API. This template declares what the service is; which account
+  and alias a release promotes to is deployment configuration, not part of the
+  service definition, and deliberately not stated here.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 128
+    Timeout: 3
+
+Resources:
+  PayApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pay-api
+      Handler: handler.lambda_handler
+      CodeUri: services/pay/
+      Description: Search payments and fetch one, with fees and receipt helpers.
+      # Published versions are immutable, and an alias is what callers invoke. The
+      # release moves the alias; nothing here pins a version, because the version to
+      # promote is whatever the build produced.
+      AutoPublishAlias: beta
+
+Outputs:
+  FunctionName:
+    Description: The function a release deploys to.
+    Value: !Ref PayApi

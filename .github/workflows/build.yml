@@ -1,0 +1,99 @@
+# The customer's own build. The release agent does not build anything — it asks
+# this workflow to, waits, and then deploys whatever immutable artifact this
+# produced. Compute stays where the customer already has it.
+#
+# `workflow_dispatch` rather than `on: push` is deliberate: the agent decides
+# *whether* this change warrants a build and *when*, so the trigger has to be a
+# call, not an event.
+name: build
+
+# The agent cannot learn a run id from the dispatch API, so it passes a
+# correlation id and finds the run by name.
+run-name: ${{ inputs.correlation_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: The commit to package.
+        required: true
+      correlation_id:
+        description: Set by the caller so it can find this run again.
+        required: true
+
+permissions:
+  contents: read
+  id-token: write          # OIDC, so no long-lived AWS keys live in this repo
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+
+      # Stamped into the package, so the running function can say which commit
+      # it came from. A release that claims success is easy to fake; a function
+      # that names its own provenance on every invoke is not.
+      - name: Stamp the package with its provenance
+        run: |
+          printf '{"commit": "%s", "built_at": "%s"}\n' \
+            "${{ inputs.sha }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > services/pay/BUILD_INFO.json
+          cat services/pay/BUILD_INFO.json
+
+      - name: Run the unit tests
+        run: |
+          python -m pip install --quiet pytest
+          cd services/pay && python -m pytest tests -q
+
+      # Only what runs in production. The tests ran a step ago and left their
+      # cache and bytecode behind; shipping those means the artifact differs from
+      # one machine to the next and the deployed function is full of files nobody
+      # can account for.
+      - name: Package
+        run: |
+          cd services/pay
+          zip -qr "$GITHUB_WORKSPACE/pay-api.zip" . \
+            -x 'tests/*' '.pytest_cache/*' '__pycache__/*' '*.pyc'
+          echo "packaged:"
+          unzip -l "$GITHUB_WORKSPACE/pay-api.zip"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_BUILD_ROLE_ARN }}
+          aws-region: us-west-2
+
+      # A published Lambda version IS the immutable artifact: its code cannot be
+      # replaced afterwards. Building therefore ends here, with an identity the
+      # agent can deploy and verify. Note this workflow's role cannot move the
+      # alias — promoting is the agent's decision, not the build's.
+      - name: Publish an immutable version
+        id: publish
+        run: |
+          set -euo pipefail
+          out=$(aws lambda update-function-code \
+                  --function-name pay-api \
+                  --zip-file fileb://pay-api.zip \
+                  --publish \
+                  --query '[Version,CodeSha256]' --output text)
+          version=$(echo "$out" | cut -f1)
+          digest=$(echo "$out" | cut -f2)
+          echo "published version $version with digest $digest"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest"   >> "$GITHUB_OUTPUT"
+
+      - name: Report the artifact identity
+        run: |
+          printf '{"version": "%s", "digest": "%s", "commit": "%s"}\n' \
+            "${{ steps.publish.outputs.version }}" \
+            "${{ steps.publish.outputs.digest }}" \
+            "${{ inputs.sha }}" > build-info.json
+          cat build-info.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: build-info.json
+          retention-days: 7
