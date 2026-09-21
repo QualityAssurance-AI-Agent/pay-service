@@ -1,18 +1,24 @@
-# release-agent-test
+# pay-service
 
-A small payments app used to exercise the Heimdall Release Agent against a real
-repository: real pull requests, real changed-file sets, and governance read from
-each pull request's base ref.
+The payments read API, and the console that searches it.
 
-    web/        front end (React)
-    services/   back end (Python)
-    docs/       documentation
+    services/pay/   the API: search payments, fetch one          (Python 3.12, Lambda)
+    web/            the search console                           (React, TypeScript)
+    docs/           what support and on-call read
 
-The release agent's inputs live in `.pipeline/`:
+## Running the tests
 
-    tools.json                    the release capabilities available
-    deployment.json               the release path and how each environment deploys
-    policies/baseline.rego        governance, evaluated against the release plan
-    policies/baseline.intent.json the same governance, structured, read by the resolver
+```bash
+cd services/pay && pytest tests      # the API
+cd web && npm test                   # the console
+```
 
+Amounts are stored and passed around in minor units, as integers. The tests pin the
+rounding, so changing how an amount is formatted will fail them — which is the point.
 
+## Releasing
+
+How this service is released is written down in [`AGENTS.md`](AGENTS.md), under
+**Release rules**, in prose. There is nothing else: no pipeline definition, no list of
+which tests gate which environment. Those are the rules, and they are meant to be read
+by people first.
