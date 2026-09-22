@@ -1,0 +1,77 @@
+# The doorbell. This is the only file a customer adds to be released by the agent.
+#
+# It does not decide anything: it tells the agent a commit landed and hands over a
+# credential scoped to this repository. Whether the change warrants a build, which
+# validations it needs, whether policy admits the plan, which environment is next
+# and when to stop — all of that is the agent's, and stays out of this file.
+#
+# That division is the point. A workflow that encoded those decisions would have to
+# be regenerated per change and reviewed per change, which is the pipeline sprawl
+# this is meant to remove.
+name: release-agent
+
+on:
+  push:
+    branches:
+      - main
+
+# `pull_request` is deliberately absent. A release is a consequence of a merge, and
+# a fork's pull request must never be able to make one happen.
+
+permissions:
+  contents: read           # read the diff and the governance at the parent commit
+  statuses: write          # write the verdict back onto the commit
+  actions: write           # dispatch the build workflow in this repository
+  id-token: write          # OIDC, so no long-lived AWS key lives in this repo
+
+concurrency:
+  # One release per branch at a time. The agent also deduplicates server-side, but
+  # cancelling here saves an invocation that would only be discarded.
+  group: release-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.RELEASE_AGENT_INVOKE_ROLE_ARN }}
+          aws-region: us-west-2
+
+      - name: Hand the commit to the release agent
+        env:
+          RUNTIME_ARN: ${{ vars.RELEASE_AGENT_RUNTIME_ARN }}
+          # github.event.before is the previous tip of this branch. The agent reads
+          # GOVERNANCE at that commit: a push has no base branch, so this is what
+          # stops a commit from relaxing the policy that is about to judge it.
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          # Short-lived, scoped to this repository, limited to the permissions
+          # declared above, and expired within the hour. The agent stores nothing.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg after "$AFTER" \
+                --arg before "$BEFORE" --arg ref "$GITHUB_REF" \
+                --arg token "$GH_TOKEN" \
+            '{action: "deploy-commit", repo: $repo, after: $after,
+              before: $before, ref: $ref, githubToken: $token}' > payload.json
+
+          aws bedrock-agentcore invoke-agent-runtime \
+            --agent-runtime-arn "$RUNTIME_ARN" \
+            --payload fileb://payload.json \
+            --content-type application/json \
+            response.json
+
+          # Surface the agent's own words in this run's log, and fail the workflow
+          # when the release did not happen — so the merge that caused it shows red
+          # rather than a green tick over a blocked release.
+          jq . response.json
+          status=$(jq -r '.status // "unknown"' response.json)
+          echo "### Release: \`$status\`" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.detail // ""' response.json >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in
+            released|skipped) ;;
+            *) echo "release did not complete: $status"; exit 1 ;;
+          esac
