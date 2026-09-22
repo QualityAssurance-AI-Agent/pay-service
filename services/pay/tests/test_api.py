@@ -90,3 +90,11 @@ def test_an_unsupported_currency_is_refused_and_says_what_is_supported():
         validate_currency("XYZ")
     assert "USD" in str(caught.value)
     validate_currency("USD")
+
+
+def test_a_settled_payment_is_refundable_until_it_is_refunded():
+    assert get_payment(Store(), "pay_1001")["refundable"] is True
+
+
+def test_a_pending_payment_is_not_refundable():
+    assert get_payment(Store(), "pay_1002")["refundable"] is False
