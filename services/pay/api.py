@@ -52,7 +52,22 @@ def get_payment(store, payment_id: str) -> dict:
     # refund would go through. A payment can be refunded once it has settled and
     # has not been refunded already.
     view["refundable"] = record["status"] == "settled" and not record.get("refunded")
+    # Finance was reconciling against the gross amount and reporting a shortfall every
+    # month. The processing fee is deducted before settlement, so what a merchant
+    # actually receives is the amount less the fee, and both belong in the response.
+    view["fee_minor"] = fee_for(record["amount_minor"])
+    view["net_minor"] = record["amount_minor"] - view["fee_minor"]
     return view
+
+
+def fee_for(amount_minor: int) -> int:
+    """The processing fee on an amount, in minor units.
+
+    2.9% plus 30 cents, rounded to the nearest minor unit. Rounded once here rather
+    than at each caller, which is how the displayed amount came to disagree with the
+    settled one.
+    """
+    return round(amount_minor * 0.029) + 30
 
 
 def _view(record) -> PaymentView:

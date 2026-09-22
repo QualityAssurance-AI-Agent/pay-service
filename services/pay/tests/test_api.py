@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from api import PaymentNotFound, get_payment, search_payments
+from api import fee_for, PaymentNotFound, get_payment, search_payments
 from validation import ValidationError, validate_amount, validate_currency
 
 
@@ -98,3 +98,18 @@ def test_a_settled_payment_is_refundable_until_it_is_refunded():
 
 def test_a_pending_payment_is_not_refundable():
     assert get_payment(Store(), "pay_1002")["refundable"] is False
+
+
+def test_the_processing_fee_is_charged_at_the_published_rate():
+    assert fee_for(1299) == 68, "2.9% of 1299 is 37.67, rounded to 38, plus 30"
+
+
+def test_a_payment_reports_the_fee_and_what_is_left_after_it():
+    view = get_payment(Store(), "pay_1001")
+    assert view["fee_minor"] == 68
+    assert view["net_minor"] == 1299 - 68
+
+
+def test_a_pending_payment_is_charged_the_same_fee_as_a_settled_one():
+    """The fee is a property of the amount, not of where the payment got to."""
+    assert get_payment(Store(), "pay_1002")["fee_minor"] == fee_for(45050)
