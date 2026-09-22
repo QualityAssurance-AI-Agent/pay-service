@@ -1,0 +1,186 @@
+{
+  "catalog_version": "1",
+  "generated_from": "QualityAssurance-AI-Agent/pay-service@4f5ab922",
+  "tools": [
+    {
+      "tool_id": "build",
+      "description": "Build and package the release artifact.",
+      "kind": "build",
+      "classes": [
+        "build"
+      ],
+      "always": true,
+      "duration_minutes": 4,
+      "origin": "repo",
+      "origin_evidence": ".github/workflows/build.yml (name: build) packages services/pay, runs pytest, and publishes an immutable Lambda version via aws lambda update-function-code --publish.",
+      "workflow": "build.yml",
+      "needs_source": true,
+      "steps": [
+        {
+          "name": "Build artifact",
+          "run": "echo \"[stub] building release artifact\""
+        }
+      ]
+    },
+    {
+      "tool_id": "unit-test",
+      "description": "Unit tests. Relevant whenever source code changes.",
+      "kind": "test",
+      "classes": [
+        "unit-test"
+      ],
+      "gate": true,
+      "paths": [
+        "services/pay/**"
+      ],
+      "duration_minutes": 6,
+      "origin": "repo",
+      "origin_evidence": "build.yml 'Run the unit tests' step: 'cd services/pay && python -m pytest tests -q'; pyproject.toml [tool.pytest.ini_options] testpaths=[\"tests\"]; test file services/pay/tests/test_api.py.",
+      "workflow": "build.yml",
+      "needs_source": true,
+      "steps": [
+        {
+          "name": "Run unit tests",
+          "run": "echo \"[stub] running unit test suite\""
+        }
+      ]
+    },
+    {
+      "tool_id": "ui-test",
+      "description": "UI acceptance tests. Relevant when the front end changes.",
+      "kind": "test",
+      "classes": [
+        "ui-test",
+        "e2e"
+      ],
+      "gate": true,
+      "paths": [
+        "web/**"
+      ],
+      "duration_minutes": 15,
+      "origin": "repo",
+      "origin_evidence": "web/package.json defines 'test:ui': 'playwright test' and devDependency @playwright/test ^1.47.0. No CI workflow currently runs it \u2014 build.yml does not invoke web tests.",
+      "needs_source": true,
+      "steps": [
+        {
+          "name": "Run UI tests",
+          "run": "echo \"[stub] driving UI acceptance flows\""
+        }
+      ]
+    },
+    {
+      "tool_id": "peer-review-approved",
+      "description": "Verify the change was approved by a peer before it was merged. This reviews nothing: the review happens on the pull request, and this confirms it was not skipped.",
+      "classes": [
+        "code-review"
+      ],
+      "gate": true,
+      "duration_minutes": 1,
+      "origin": "platform-default",
+      "origin_evidence": "Code review is a governance gate that applies to any service regardless of repository contents; nothing in the survey shows it, so it applies as a platform default.",
+      "steps": [
+        {
+          "name": "Verify an approving review exists",
+          "run": "echo \"[stub] would check the pull request for an approving review\""
+        }
+      ]
+    },
+    {
+      "tool_id": "smoke-test",
+      "description": "Post-deployment smoke test. Runs in every environment.",
+      "kind": "test",
+      "phase": "per_environment",
+      "classes": [
+        "smoke-test"
+      ],
+      "gate": true,
+      "always": true,
+      "duration_minutes": 2,
+      "origin": "platform-default",
+      "origin_evidence": "the catalog applies this to every release",
+      "steps": [
+        {
+          "name": "Smoke test",
+          "run": "echo \"[stub] smoke testing $RELEASE_ENV\""
+        }
+      ]
+    },
+    {
+      "tool_id": "health-check",
+      "description": "Post-deployment health verification in production.",
+      "phase": "per_environment",
+      "classes": [
+        "health-check"
+      ],
+      "gate": true,
+      "always": true,
+      "environments": [
+        "prod"
+      ],
+      "duration_minutes": 3,
+      "origin": "platform-default",
+      "origin_evidence": "the catalog applies this to every release",
+      "steps": [
+        {
+          "name": "Check production health",
+          "run": "echo \"[stub] probing $RELEASE_ENV health signals\""
+        }
+      ]
+    },
+    {
+      "tool_id": "deploy-lambda",
+      "description": "Deploy a Lambda alias. Serves every environment whose target is Lambda.",
+      "kind": "deploy",
+      "phase": "deploy",
+      "classes": [
+        "deploy"
+      ],
+      "target_kinds": [
+        "lambda"
+      ],
+      "duration_minutes": 3,
+      "origin": "customer",
+      "origin_evidence": "you told us this service deploys through lambda"
+    },
+    {
+      "tool_id": "security-scan",
+      "description": "SAST, dependency audit and image scan.",
+      "kind": "security",
+      "classes": [
+        "security-scan"
+      ],
+      "gate": true,
+      "duration_minutes": 8,
+      "origin": "governance",
+      "origin_evidence": "your rules require it; taken from the catalog as a default",
+      "steps": [
+        {
+          "name": "Run security scan",
+          "run": "echo \"[stub] scanning dependencies and images for CVEs\""
+        }
+      ]
+    },
+    {
+      "tool_id": "load-test",
+      "description": "Load validation in gamma. Relevant when backend code changes.",
+      "kind": "test",
+      "phase": "per_environment",
+      "classes": [
+        "load-test"
+      ],
+      "gate": true,
+      "environments": [
+        "gamma"
+      ],
+      "duration_minutes": 20,
+      "origin": "governance",
+      "origin_evidence": "your rules require it; taken from the catalog as a default",
+      "steps": [
+        {
+          "name": "Run load test",
+          "run": "echo \"[stub] driving load vectors against $RELEASE_ENV\""
+        }
+      ]
+    }
+  ]
+}
